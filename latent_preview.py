@@ -7,7 +7,7 @@ from comfy.taesd.taesd import TAESD
 import folder_paths
 import comfy.utils
 
-MAX_PREVIEW_RESOLUTION = 512
+MAX_PREVIEW_RESOLUTION = 256
 
 class LatentPreviewer:
     def decode_latent_to_preview(self, x0):
