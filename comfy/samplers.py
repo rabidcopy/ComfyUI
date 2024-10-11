@@ -301,6 +301,30 @@ class KSamplerX0Inpaint:
             out = out * denoise_mask + self.latent_image * latent_mask
         return out
 
+def cosine_scheduler(model_sampling, steps):
+	s = model_sampling
+	sigs = []
+	# This stops it blowing things out at the start of sampling
+	# but decays linearly to allow normal cosine sampling after a few steps
+	doffset = 0.25
+	dmin = 1
+	dmax = 1 + doffset
+	dpct = 4
+	for x in range(steps):
+		cos = (-0.5 * (1 + math.cos(math.pi * x / (steps - 1)))) + 1
+		ind = int(cos * (len(s.sigmas) - 1))
+
+		div = dmin if x == 0 else dmax
+		if x != 0:
+			div -= doffset * ((x-1) / (max((steps//dpct), 1)))
+			#print((x-1) / (max((steps//dpct), 1)), max(min(div, dmax), dmin))
+		sigma = s.sigmas[-(1+ind)].item() / max(min(div, dmax), dmin)
+		sigs += [sigma]
+	sigs += [0.0]
+
+	sigmas = torch.FloatTensor(sigs)
+	return sigmas.to(s.sigmas.device)
+
 def simple_scheduler(model_sampling, steps):
     s = model_sampling
     sigs = []
@@ -729,7 +753,7 @@ def sample(model, noise, positive, negative, cfg, device, sampler, sigmas, model
     return cfg_guider.sample(noise, latent_image, sampler, sigmas, denoise_mask, callback, disable_pbar, seed)
 
 
-SCHEDULER_NAMES = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform", "beta"]
+SCHEDULER_NAMES = ["normal", "karras", "exponential", "sgm_uniform", "cosine", "simple", "ddim_uniform", "beta"]
 SAMPLER_NAMES = KSAMPLER_NAMES + ["ddim", "uni_pc", "uni_pc_bh2"]
 
 def calculate_sigmas(model_sampling, scheduler_name, steps):
@@ -739,6 +763,8 @@ def calculate_sigmas(model_sampling, scheduler_name, steps):
         sigmas = k_diffusion_sampling.get_sigmas_exponential(n=steps, sigma_min=float(model_sampling.sigma_min), sigma_max=float(model_sampling.sigma_max))
     elif scheduler_name == "normal":
         sigmas = normal_scheduler(model_sampling, steps)
+    elif scheduler_name == "cosine":
+        sigmas = cosine_scheduler(model_sampling, steps)
     elif scheduler_name == "simple":
         sigmas = simple_scheduler(model_sampling, steps)
     elif scheduler_name == "ddim_uniform":
